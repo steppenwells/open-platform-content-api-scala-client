@@ -1,5 +1,6 @@
 import com.gu.openplatform.contentapi.Api
-import org.joda.time.{DateMidnight, LocalDate, DateTime}
+import java.io.IOException
+import org.joda.time.DateMidnight
 import org.scalatest.matchers.ShouldMatchers
 import org.scalatest.{BeforeAndAfterEach, FeatureSpec}
 
@@ -60,14 +61,14 @@ class ExampleUsageTest extends FeatureSpec with ShouldMatchers with BeforeAndAft
     }
 
     scenario("find content by tag") {
-      val search = Api.search.tags("football/tottenham-hotspur")
+      val search = Api.search.tag("football/tottenham-hotspur")
 
       search.total should be > (0)
       search.results.foreach (item => println(item.webTitle))
     }
 
     scenario("find content by multiple tags") {
-      val search = Api.search.tags("football/tottenham-hotspur,tone/matchreports")
+      val search = Api.search.tag("football/tottenham-hotspur,tone/matchreports")
 
       search.total should be > (0)
       search.results.foreach (item => println(item.webTitle))
@@ -87,6 +88,13 @@ class ExampleUsageTest extends FeatureSpec with ShouldMatchers with BeforeAndAft
 
       search.total should be > (0)
       search.results.foreach (item => println(item.webTitle))
+    }
+
+    scenario("did you mean?") {
+      val search = Api.search.q("the green hills of ingland")
+
+      search.total should be (0)
+      println("Did you mean " + search.didYouMean + "?")
     }
   }
 
@@ -108,7 +116,7 @@ class ExampleUsageTest extends FeatureSpec with ShouldMatchers with BeforeAndAft
     }
 
     scenario("retrieving an article's headline and trail") {
-      val search = Api.search.pageSize(1).tags("type/article")
+      val search = Api.search.pageSize(1).tag("type/article")
               .showFields("headline,trail-text")
 
       val fields = search.results.head.fields.getOrElse(Map())
@@ -116,7 +124,7 @@ class ExampleUsageTest extends FeatureSpec with ShouldMatchers with BeforeAndAft
     }
 
     scenario("retrieving all article's fields") {
-      val search = Api.search.pageSize(1).tags("type/article")
+      val search = Api.search.pageSize(1).tag("type/article")
               .showFields("all")
 
       val fields = search.results.head.fields.getOrElse(Map())
@@ -169,7 +177,61 @@ class ExampleUsageTest extends FeatureSpec with ShouldMatchers with BeforeAndAft
       val item = Api.item.apiUrl(contentApiUrl)
       println("loaded " + item.content.get.webTitle)
     }
+
+    scenario("loading lead content for a tag") {
+      val item = Api.item.itemId("world/iraq")
+      item.leadContent.size should  be > (0)
+      item.leadContent.foreach (item => println(item.webTitle))
+    }
+
+    scenario("loading a stories story package") {
+
+      // look at the content on the homepage and find the first item that has a package
+      val networkFront = Api.item.itemId("").showFields("has-story-package").showEditorsPicks(true).pageSize(1)
+      val contentWithPackage = networkFront.editorsPicks.filter(_.fields.get("hasStoryPackage") == "true").head
+
+      val contentApiUrl = contentWithPackage.apiUrl
+      println("following api url: " + contentApiUrl)
+
+      val item = Api.item.apiUrl(contentApiUrl).showStoryPackage(true)
+      println("loaded " + item.content.get.webTitle)
+      item.storyPackage.size should be > 0
+
+      println("story package headlines:")
+      item.storyPackage foreach (c => println("\t" + c.webTitle))
+    }
+
+    scenario("loading editors picks for the us homepage") {
+
+      val usNetworkFront = Api.item.itemId("").edition("US").showEditorsPicks(true)
+
+      println("US network front editors picks:")
+      usNetworkFront.editorsPicks.foreach (c => println("\t" + c.webTitle))
+    }
   }
+
+  feature("getting the most viewed content in a section") {
+
+    scenario("showing the most viewed for a section") {
+
+      val politicsSection = Api.item.itemId("politics").showMostViewed()
+
+      println("most viewed for politics:")
+      politicsSection.mostViewed.foreach (c => println("\t" + c.webTitle))
+    }
+  }
+
+  feature("getting expired content") {
+
+      scenario("cannot load expired content if I am not an internal user") {
+
+        val expiredArticle = Api.item.itemId("football/2012/sep/14/zlatan-ibrahimovic-paris-st-germain-toulouse")
+          .showExpired()
+
+        val error = intercept[IOException]{ expiredArticle.content }
+        error.getMessage should include("400")
+      }
+    }
 
   feature("refining search results") {
 
@@ -183,6 +245,44 @@ class ExampleUsageTest extends FeatureSpec with ShouldMatchers with BeforeAndAft
           println("\t" + refinement.displayName + " (" + refinement.count + ")")
         }
       }
+    }
+  }
+
+  feature("contributor bios and pictures") {
+    scenario("show contributor bios") {
+      Api.tags.tagType("contributor").filter(_.bio.isDefined).foreach(tag => println(tag.webTitle + ":" + tag.bio.get))
+    }
+    scenario("show contributor byline Pictures") {
+      Api.tags.tagType("contributor").foreach(tag => println(tag.webTitle + ":" + tag.bylineImageUrl.getOrElse("None")))
+    }
+  }
+  
+  feature("editorial folders are available") {
+    scenario("can query for folders") {
+      println("Query folders")
+
+      Api.folders.foreach(folder => println("    "+folder.id+": "+folder.webTitle))
+    }
+
+    scenario("can query tags by folder") {
+      println("Tags by Folder: folder/traveleditorsindex/travelawards")
+      Api.tags.ids("folder/traveleditorsindex/travelawards").foreach(
+        tag => println("    "+tag.webTitle))
+    }
+
+    scenario("can query content by folder") {
+      println("Content by Folder: folder/traveleditorsindex/travelawards")
+      Api.item.itemId("folder/traveleditorsindex/travelawards").results.foreach(
+        content => println("    "+content.webTitle))
+    }
+
+    /**
+     * Note that this is similar to the above
+     */
+    scenario("can filter content search by folder") {
+      println("Content Search by Folder: folder/traveleditorsindex/travelawards")
+      Api.search.q("sausages").folder("folder/traveleditorsindex/travelawards").results.foreach(
+        content => println("    "+content.webTitle))
     }
   }
 }
