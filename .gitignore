@@ -1,9 +1,4 @@
+.*
+!.gitignore
+
 target/
-lib_managed/
-src_managed/
-project/boot/
-out/
-*~
-*.iml
-*.ipr
-*.iws
